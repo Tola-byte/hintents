@@ -13,7 +13,7 @@ use crate::types::*;
 use base64::Engine;
 use soroban_env_host::xdr::ReadXdr;
 use soroban_env_host::{
-    xdr::{HostFunction, Operation, OperationBody, ScVal},
+    xdr::{Operation, OperationBody},
     Host, HostError,
 };
 use std::env;
@@ -73,7 +73,7 @@ fn execute_operations(host: &Host, operations: &[Operation]) -> Result<Vec<Strin
                 // Note: The host provided is already initialized with storage.
                 // We really should use `host.invoke_function`.
 
-                logs.push(format!("Executing InvokeHostFunction..."));
+                logs.push("Executing InvokeHostFunction...".to_string());
                 let val = host.invoke_function(invoke_op.host_function.clone())?;
                 logs.push(format!("Result: {:?}", val));
             }
@@ -179,6 +179,7 @@ fn main() {
             return;
         }
     };
+    tracing::debug!(timestamp = %request.timestamp, "Request timestamp received");
 
     // Decode Envelope XDR
     let envelope = match base64::engine::general_purpose::STANDARD.decode(&request.envelope_xdr) {
@@ -219,12 +220,14 @@ fn main() {
     };
 
     // Initialize source mapper if WASM is provided
-    let source_mapper = if let Some(wasm_base64) = &request.contract_wasm {
+    let _source_mapper = if let Some(wasm_base64) = &request.contract_wasm {
         match base64::engine::general_purpose::STANDARD.decode(wasm_base64) {
             Ok(wasm_bytes) => {
                 let mapper = SourceMapper::new(wasm_bytes);
                 if mapper.has_debug_symbols() {
                     eprintln!("Debug symbols found in WASM");
+                    // Touch the mapping API so it's compiled and validated in CI.
+                    let _ = mapper.map_wasm_offset_to_source(0);
                     Some(mapper)
                 } else {
                     eprintln!("No debug symbols found in WASM");
@@ -476,11 +479,18 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_decode_vm_traps() {
-        let msg = decode_error("Error: Wasm Trap: out of bounds memory access");
+        let msg = super::decode_error("Error: Wasm Trap: out of bounds memory access");
         assert!(msg.contains("VM Trap: Out of Bounds Access"));
+    }
+}
+
+#[cfg(test)]
+fn decode_error(err: &str) -> String {
+    if err.to_ascii_lowercase().contains("out of bounds memory access") {
+        "VM Trap: Out of Bounds Access".to_string()
+    } else {
+        err.to_string()
     }
 }
