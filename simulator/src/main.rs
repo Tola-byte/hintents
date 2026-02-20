@@ -488,7 +488,10 @@ mod tests {
 
 #[cfg(test)]
 fn decode_error(err: &str) -> String {
-    if err.to_ascii_lowercase().contains("out of bounds memory access") {
+    if err
+        .to_ascii_lowercase()
+        .contains("out of bounds memory access")
+    {
         "VM Trap: Out of Bounds Access".to_string()
     } else {
         err.to_string()
