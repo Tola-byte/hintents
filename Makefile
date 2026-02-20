@@ -1,10 +1,24 @@
 .PHONY: build test lint lint-unused test-unused validate-ci validate-interface clean
 .PHONY: build test lint lint-unused test-unused validate-ci clean
-.PHONY: build test lint validate-errors clean
+.PHONY: build test lint validate-errors clean bench bench-rpc bench-sim bench-profile
+
+# Build variables
+VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT_SHA?=$(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
+BUILD_DATE?=$(shell date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+# Go build flags
+LDFLAGS=-ldflags "-X 'github.com/dotandev/hintents/internal/cmd.Version=$(VERSION)' \
+                  -X 'github.com/dotandev/hintents/internal/cmd.CommitSHA=$(COMMIT_SHA)' \
+                  -X 'github.com/dotandev/hintents/internal/cmd.BuildDate=$(BUILD_DATE)'"
 
 # Build the main binary
 build:
-	go build -o bin/erst ./cmd/erst
+	go build $(LDFLAGS) -o bin/erst ./cmd/erst
+
+# Build for release (optimized)
+build-release:
+	go build $(LDFLAGS) -ldflags "-s -w" -o bin/erst ./cmd/erst
 
 # Run tests
 test:
@@ -43,10 +57,18 @@ deps:
 	go mod tidy
 	go mod download
 
-# Run full CI checks locally (matches GitHub Actions)
-ci-local:
-	./scripts/test-ci-locally.sh
+# Run benchmarks
+bench:
+	go test -bench=. -benchmem ./internal/rpc ./internal/simulator
 
-# Quick pre-push checks (fast feedback)
-pre-push:
-	./scripts/pre-push-quick.sh
+# Run RPC benchmarks only
+bench-rpc:
+	go test -bench=. -benchmem ./internal/rpc
+
+# Run simulator benchmarks only
+bench-sim:
+	go test -bench=. -benchmem ./internal/simulator
+
+# Run benchmarks with CPU profiling
+bench-profile:
+	go test -bench=. -benchmem -cpuprofile=cpu.prof ./internal/rpc ./internal/simulator

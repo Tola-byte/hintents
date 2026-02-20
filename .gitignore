@@ -1,5 +1,6 @@
 # --- Compiled binaries/libraries ---
 /erst
+*.exe
 /simulator/target/
 node_modules/
 dist/
@@ -26,6 +27,7 @@ simulator/check_output.txt
 # --- Go specific ---
 /vendor/
 coverage.out
+coverage/
 
 # --- Rust specific ---
 **/*.rs.bk
@@ -37,6 +39,10 @@ create_phase9.py
 .idea/
 .vscode/
 
+ishus.py
+
+node_modules
+out
 # --- Documentation (User specific settings) ---
 # /external/
 # /*.md

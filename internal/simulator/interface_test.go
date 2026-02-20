@@ -25,7 +25,7 @@ func TestNewRunnerInterface(t *testing.T) {
 	// but the interface structure is correct
 	if err != nil {
 		// Expected in test environment without erst-sim binary
-		assert.Contains(t, err.Error(), "simulator binary 'erst-sim' not found")
+		assert.Contains(t, err.Error(), "erst-sim binary not found")
 	} else {
 		// If binary exists, verify interface is returned
 		assert.NotNil(t, runner)

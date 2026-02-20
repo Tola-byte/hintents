@@ -1,10 +1,22 @@
 // Copyright 2025 Erst Users
 // SPDX-License-Identifier: Apache-2.0
 
+//
+// You may obtain a copy of the License at
+//
+//
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+
+//
+// You may obtain a copy of the License at
+//
+//
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+
 use serde::Deserialize;
 use std::fs;
 
-use super::theme::Theme;
+use super::types::Theme;
 use crate::config::paths::theme_path;
 
 #[derive(Debug, Deserialize)]

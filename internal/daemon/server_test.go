@@ -14,7 +14,7 @@ import (
 
 func TestServer_DebugTransaction(t *testing.T) {
 	// Set mock simulator path for testing
-	t.Setenv("ERST_SIMULATOR_PATH", "/bin/echo")
+	t.Setenv("ERST_SIM_PATH", "/bin/echo")
 
 	server, err := NewServer(Config{
 		Network: string(stellarrpc.Testnet),
@@ -37,7 +37,7 @@ func TestServer_DebugTransaction(t *testing.T) {
 
 func TestServer_GetTrace(t *testing.T) {
 	// Set mock simulator path for testing
-	t.Setenv("ERST_SIMULATOR_PATH", "/bin/echo")
+	t.Setenv("ERST_SIM_PATH", "/bin/echo")
 
 	server, err := NewServer(Config{
 		Network: string(stellarrpc.Testnet),
@@ -65,7 +65,7 @@ func TestServer_GetTrace(t *testing.T) {
 
 func TestServer_Authentication(t *testing.T) {
 	// Set mock simulator path for testing
-	t.Setenv("ERST_SIMULATOR_PATH", "/bin/echo")
+	t.Setenv("ERST_SIM_PATH", "/bin/echo")
 
 	server, err := NewServer(Config{
 		Network:   string(stellarrpc.Testnet),
@@ -102,7 +102,7 @@ func TestServer_Authentication(t *testing.T) {
 
 func TestServer_StartStop(t *testing.T) {
 	// Set mock simulator path for testing
-	t.Setenv("ERST_SIMULATOR_PATH", "/bin/echo")
+	t.Setenv("ERST_SIM_PATH", "/bin/echo")
 
 	server, err := NewServer(Config{
 		Network: string(stellarrpc.Testnet),

@@ -1,5 +1,9 @@
 #!/bin/bash
 
+// Copyright (c) 2026 dotandev
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+
 # Test script for local WASM replay functionality
 # This script tests the erst debug --wasm feature
 
@@ -46,7 +50,7 @@ if ./erst debug --wasm "/tmp/nonexistent.wasm" 2>&1; then
     echo "ERROR: Should have failed with non-existent file"
     exit 1
 else
-    echo "${GREEN}✓ Correctly handled non-existent file${NC}"
+    echo "${GREEN}[OK] Correctly handled non-existent file${NC}"
 fi
 echo ""
 

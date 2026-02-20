@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/dotandev/hintents/internal/compare"
+	"github.com/dotandev/hintents/internal/config"
 	"github.com/dotandev/hintents/internal/errors"
 	"github.com/dotandev/hintents/internal/rpc"
 	"github.com/dotandev/hintents/internal/simulator"
@@ -50,11 +51,28 @@ Example:
 		ctx := cmd.Context()
 		txHash := args[0]
 
-		var client *rpc.Client
+		token := rpcTokenFlag
+		if token == "" {
+			token = os.Getenv("ERST_RPC_TOKEN")
+		}
+		if token == "" {
+			cfg, err := config.LoadConfig()
+			if err == nil && cfg.RPCToken != "" {
+				token = cfg.RPCToken
+			}
+		}
+
+		opts := []rpc.ClientOption{
+			rpc.WithNetwork(rpc.Network(networkFlag)),
+			rpc.WithToken(token),
+		}
 		if rpcURLFlag != "" {
-			client = rpc.NewClientWithURL(rpcURLFlag, rpc.Network(networkFlag))
-		} else {
-			client = rpc.NewClient(rpc.Network(networkFlag))
+			opts = append(opts, rpc.WithHorizonURL(rpcURLFlag))
+		}
+
+		client, err := rpc.NewClient(opts...)
+		if err != nil {
+			return fmt.Errorf("failed to create client: %w", err)
 		}
 
 		fmt.Printf("Comparing execution for transaction: %s\n", txHash)
@@ -68,7 +86,7 @@ Example:
 		}
 
 		// Initialize simulator
-		runner, err := simulator.NewRunner()
+		runner, err := simulator.NewRunner("", verbose)
 		if err != nil {
 			return fmt.Errorf("failed to initialize simulator: %w", err)
 		}

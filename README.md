@@ -16,6 +16,7 @@ Currently, when a Soroban transaction fails on mainnet, developers receive a gen
 1.  **Transaction Replay**: Fetch a failed transaction's envelope and ledger state from an RPC provider.
 2.  **Local Simulation**: Re-execute the transaction logically in a local environment.
 3.  **Trace decoding**: Map execution steps and failures back to readable instructions or Rust source lines.
+4.  **Source Mapping**: Map WASM instruction failures to specific Rust source code lines using debug symbols.
 
 ## Usage (MVP)
 
@@ -27,11 +28,82 @@ Fetches a transaction envelope from the Stellar Public network and prints its XD
 ./erst debug <transaction-hash> --network testnet
 ```
 
+### Interactive Trace Viewer
+
+Launch an interactive terminal UI to explore transaction execution traces with search functionality.
+
+```bash
+./erst debug <transaction-hash> --interactive
+# or
+./erst debug <transaction-hash> -i
+```
+
+**Features:**
+
+- **Search**: Press `/` to search through traces (contract IDs, functions, errors)
+- **Tree Navigation**: Expand/collapse nodes, navigate with arrow keys
+- **Syntax Highlighting**: Color-coded contract IDs, functions, and errors
+- **Fast Navigation**: Jump between search matches with `n`/`N`
+- **Match Counter**: See "Match 2 of 5" status while searching
+
+See [internal/trace/README.md](internal/trace/README.md) for detailed documentation.
+
+### Audit log signing (software / HSM)
+
+`erst` includes a small utility command to generate a deterministic, signed audit log from a JSON payload.
+
+#### Software signing (Ed25519 private key)
+
+Provide a PKCS#8 PEM Ed25519 private key via env or CLI:
+
+- Env: `ERST_AUDIT_PRIVATE_KEY_PEM`
+- CLI: `--software-private-key <pem>`
+
+Example:
+
+```bash
+node dist/index.js audit:sign \
+  --payload '{"input":{},"state":{},"events":[],"timestamp":"2026-01-01T00:00:00.000Z"}' \
+  --software-private-key "$(cat ./ed25519-private-key.pem)"
+```
+
+#### PKCS#11 HSM signing
+
+Select the PKCS#11 provider with `--hsm-provider pkcs11` and configure the module/token/key via env vars.
+
+Required env vars:
+
+- `ERST_PKCS11_MODULE` (path to the PKCS#11 module `.so`)
+- `ERST_PKCS11_PIN`
+- `ERST_PKCS11_KEY_LABEL` **or** `ERST_PKCS11_KEY_ID` (hex)
+- `ERST_PKCS11_PUBLIC_KEY_PEM` (SPKI PEM public key for verification/audit metadata)
+
+Optional:
+
+- `ERST_PKCS11_SLOT` (numeric index into the slot list)
+- `ERST_PKCS11_TOKEN_LABEL`
+
+Example:
+
+```bash
+export ERST_PKCS11_MODULE=/usr/lib/softhsm/libsofthsm2.so
+export ERST_PKCS11_PIN=1234
+export ERST_PKCS11_KEY_LABEL=erst-audit-ed25519
+export ERST_PKCS11_PUBLIC_KEY_PEM="$(cat ./ed25519-public-key-spki.pem)"
+
+node dist/index.js audit:sign \
+  --hsm-provider pkcs11 \
+  --payload '{"input":{},"state":{},"events":[],"timestamp":"2026-01-01T00:00:00.000Z"}'
+```
+
+The command prints the signed audit log JSON to stdout so it can be redirected to a file.
+
 ## Documentation
 
 - **[Architecture Overview](docs/architecture.md)**: Deep dive into how the Go CLI communicates with the Rust simulator, including data flow, IPC mechanisms, and design decisions.
 - **[Project Proposal](docs/proposal.md)**: Detailed project proposal and roadmap.
-- **[Environment Variables](docs/environment-variables.md)**: Complete reference for all configuration options and environment variables.
+- **[Source Mapping](docs/source-mapping.md)**: Implementation details for mapping WASM failures to Rust source code.
+- **[Debug Symbols Guide](docs/debug-symbols-guide.md)**: How to compile Soroban contracts with debug symbols.
 
 ## Technical Analysis
 
@@ -53,15 +125,6 @@ For a detailed explanation of the architecture, see [docs/architecture.md](docs/
 
 We are building this open-source to help the entire Stellar community.
 
-### 🗳️ Vote on Features
-
-Help shape the future of Erst! Vote on feature requests using GitHub Discussions:
--   Browse and vote on [Feature Requests](https://github.com/dotandev/hintents/discussions)
--   Add a 👍 reaction to features you'd like to see prioritized
--   Submit your own ideas for community feedback
-
-See our [CONTRIBUTING.md](CONTRIBUTING.md#feature-requests--voting) for the full feature request process.
-
 ### Prerequisites
 
 - Go 1.21+
@@ -69,10 +132,6 @@ See our [CONTRIBUTING.md](CONTRIBUTING.md#feature-requests--voting) for the full
 - Stellar CLI (for comparing results)
 
 ### Getting Started
-
-<p align="center">
-  <img src="docs/assets/demo.gif" alt="CLI Demo" width="1000">
-</p>
 
 1.  Clone the repo:
     ```bash
@@ -94,24 +153,33 @@ See our [CONTRIBUTING.md](CONTRIBUTING.md#feature-requests--voting) for the full
 
 See [docs/proposal.md](docs/proposal.md) for the detailed proposal.
 
-1.  [ ] **Phase 1**: Research RPC endpoints for fetching historical ledger keys.
-2.  [ ] **Phase 2**: Build a basic "Replay Harness" that can execute a loaded WASM file.
-3.  [ ] **Phase 3**: Connect the harness to live mainnet data.
+1.  [x] **Phase 1**: Research RPC endpoints for fetching historical ledger keys.
+2.  [x] **Phase 2**: Build a basic "Replay Harness" that can execute a loaded WASM file.
+3.  [x] **Phase 3**: Connect the harness to live mainnet data.
+4.  [ ] **Phase 4**: Advanced Diagnostics & Source Mapping (Current Focus).
+
+## Contributors
+
+Thanks goes to these wonderful people:
+
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+<table>
+  <tbody>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/dotandev"><img src="https://avatars.githubusercontent.com/u/105521093?v=4" width="100px;" alt="dotdev."/><br /><sub><b>dotdev.</b></sub></a><br /><a href="#code-dotandev" title="Code">Code</a> <a href="#doc-dotandev" title="Documentation">Documentation</a> <a href="#ideas-dotandev" title="Ideas & Planning">Ideas & Planning</a></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+
+<!-- ALL-CONTRIBUTORS-LIST:END -->
+
+This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification. Contributions of any kind welcome!
 
 ---
-*Erst is an open-source initiative. Contributions, PRs, and Issues are welcome.*
-
-## 🚀 Version 2.0 Highlights
-
-Phase 9 introduces a stability and analytics-focused upgrade, including:
-
-- Improved system reliability and error handling
-- Enhanced analytics and telemetry support
-- UX refinements across CLI and simulator
-- Cross-environment consistency (local, Docker, CI)
-
-This release prepares the project for future scalability and feature expansion.
-=======
 
 _Erst is an open-source initiative. Contributions, PRs, and Issues are welcome._
-

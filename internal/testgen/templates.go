@@ -28,7 +28,7 @@ func TestRegression_{{.TestName}}(t *testing.T) {
 	}
 
 	// Create simulator runner
-	runner, err := simulator.NewRunner()
+	runner, err := simulator.NewRunner("", false)
 	require.NoError(t, err, "Failed to create simulator runner")
 
 	// Run simulation

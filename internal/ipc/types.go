@@ -1,15 +1,6 @@
 // Copyright 2025 Erst Users
 // SPDX-License-Identifier: Apache-2.0
 
-// Code generated from JSON Schema using quicktype. DO NOT EDIT.
-// To parse and unparse this JSON data, add this code to your project and do:
-//
-//    simulationRequestSchema, err := UnmarshalSimulationRequestSchema(bytes)
-//    bytes, err = simulationRequestSchema.Marshal()
-//
-//    simulationResponseSchema, err := UnmarshalSimulationResponseSchema(bytes)
-//    bytes, err = simulationResponseSchema.Marshal()
-
 package ipc
 
 import "encoding/json"

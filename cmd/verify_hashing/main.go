@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/dotandev/hintents/internal/rpc"
-	"github.com/stellar/go/xdr"
+	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
 func main() {

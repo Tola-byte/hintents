@@ -51,7 +51,7 @@ func TestMockServer_CompleteWorkflow(t *testing.T) {
 	defer mockServer.Close()
 
 	// Step 4: Create a client pointing to the mock server
-	client := NewClientWithURL(mockServer.URL(), Testnet)
+	client := NewClientWithURLOption(mockServer.URL(), Testnet, "")
 	assert.NotNil(t, client)
 
 	// Step 5: Test successful scenarios - use direct HTTP to mock server

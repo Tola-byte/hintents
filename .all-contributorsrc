@@ -1,0 +1,63 @@
+{
+  "projectName": "hintents",
+  "projectOwner": "dotandev",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "files": [
+    "README.md"
+  ],
+  "imageSize": 100,
+  "commit": false,
+  "commitConvention": "angular",
+  "contributors": [
+    {
+      "login": "dotandev",
+      "name": "dotdev.",
+      "avatar_url": "https://avatars.githubusercontent.com/u/105521093?v=4",
+      "profile": "https://github.com/dotandev",
+      "contributions": [
+        "code",
+        "doc",
+        "ideas"
+      ]
+    }
+  ],
+  "contributorsPerLine": 7,
+  "contributorsSortAlphabetically": false,
+  "badgeTemplate": "[![All Contributors](https://img.shields.io/badge/all_contributors-<%= contributors.length %>-orange.svg?style=flat-square)](#contributors-)",
+  "contributorTemplate": "<a href=\"<%= contributor.profile %>\"><img src=\"<%= contributor.avatar_url %>\" width=\"<%= options.imageSize %>px;\" alt=\"<%= contributor.name %>\"/><br /><sub><b><%= contributor.name %></b></sub></a><br /><%= contributions %>",
+  "types": {
+    "code": {
+      "symbol": "💻",
+      "description": "Code"
+    },
+    "doc": {
+      "symbol": "📖",
+      "description": "Documentation"
+    },
+    "bug": {
+      "symbol": "🐛",
+      "description": "Bug reports"
+    },
+    "ideas": {
+      "symbol": "🤔",
+      "description": "Ideas & Planning"
+    },
+    "review": {
+      "symbol": "👀",
+      "description": "Reviewed Pull Requests"
+    },
+    "test": {
+      "symbol": "[WARN]",
+      "description": "Tests"
+    },
+    "infra": {
+      "symbol": "🚇",
+      "description": "Infrastructure"
+    },
+    "design": {
+      "symbol": "🎨",
+      "description": "Design"
+    }
+  }
+}

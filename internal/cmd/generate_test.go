@@ -34,11 +34,17 @@ Example:
 		txHash := args[0]
 
 		// Create RPC client
-		var client *rpc.Client
+		opts := []rpc.ClientOption{
+			rpc.WithNetwork(rpc.Network(networkFlag)),
+			rpc.WithToken(rpcTokenFlag),
+		}
 		if rpcURLFlag != "" {
-			client = rpc.NewClientWithURL(rpcURLFlag, rpc.Network(networkFlag))
-		} else {
-			client = rpc.NewClient(rpc.Network(networkFlag))
+			opts = append(opts, rpc.WithHorizonURL(rpcURLFlag))
+		}
+
+		client, err := rpc.NewClient(opts...)
+		if err != nil {
+			return fmt.Errorf("failed to create client: %w", err)
 		}
 
 		// Get current working directory as default output
@@ -55,7 +61,7 @@ Example:
 			return fmt.Errorf("failed to generate tests: %w", err)
 		}
 
-		fmt.Println("✓ Test generation completed successfully")
+		fmt.Println("[OK] Test generation completed successfully")
 		return nil
 	},
 }
@@ -66,6 +72,7 @@ func init() {
 	generateTestCmd.Flags().StringVarP(&genTestName, "name", "", "", "Custom test name (defaults to transaction hash)")
 	generateTestCmd.Flags().StringVarP(&networkFlag, "network", "n", string(rpc.Mainnet), "Stellar network to use (testnet, mainnet, futurenet)")
 	generateTestCmd.Flags().StringVar(&rpcURLFlag, "rpc-url", "", "Custom Horizon RPC URL to use")
+	generateTestCmd.Flags().StringVar(&rpcTokenFlag, "rpc-token", "", "RPC authentication token (can also use ERST_RPC_TOKEN env var)")
 
 	rootCmd.AddCommand(generateTestCmd)
 }

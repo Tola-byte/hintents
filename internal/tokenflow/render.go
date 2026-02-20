@@ -86,7 +86,7 @@ func formatStroopsAsXLM(stroops *big.Int) string {
 	return fmt.Sprintf("%s.%s", intPart.String(), fracStr)
 }
 
-var mermaidUnsafe = regexp.MustCompile(`["\\]`)
+var mermaidUnsafe = regexp.MustCompile(`[]"]`)
 
 func escapeMermaidLabel(s string) string {
 	return mermaidUnsafe.ReplaceAllStringFunc(s, func(m string) string {

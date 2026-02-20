@@ -1,81 +1,161 @@
 // Copyright 2025 Erst Users
 // SPDX-License-Identifier: Apache-2.0
 
-mod cli;
 mod config;
 mod gas_optimizer;
-mod ipc;
-mod theme;
+mod runner;
+mod source_mapper;
+mod types;
 
-use base64::Engine as _;
-use serde::{Deserialize, Serialize};
+use crate::gas_optimizer::{BudgetMetrics, GasOptimizationAdvisor, CPU_LIMIT, MEMORY_LIMIT};
+use crate::source_mapper::SourceMapper;
+use crate::types::*;
+use base64::Engine;
 use soroban_env_host::xdr::ReadXdr;
-use std::collections::HashMap;
-use std::io::{self, Read};
-use std::panic;
+use soroban_env_host::{
+    xdr::{HostFunction, Operation, OperationBody, ScVal},
+    Host, HostError,
+};
+use std::env;
+use std::io::Read;
+use tracing_subscriber::{fmt, EnvFilter};
 
-use gas_optimizer::{BudgetMetrics, GasOptimizationAdvisor, OptimizationReport};
+fn init_logger() {
+    // Check if the environment variable ERST_LOG_FORMAT is set to "json"
+    let use_json = env::var("ERST_LOG_FORMAT")
+        .map(|val| val.to_lowercase() == "json")
+        .unwrap_or(false);
 
-#[derive(Debug, Deserialize)]
-struct SimulationRequest {
-    envelope_xdr: String,
-    #[allow(dead_code)]
-    result_meta_xdr: String,
-    // Key XDR -> Entry XDR
-    ledger_entries: Option<HashMap<String, String>>,
-    timestamp: Option<i64>,
-    ledger_sequence: Option<u32>,
-    // Optional: Path to local WASM file for local replay
-    wasm_path: Option<String>,
-    // Optional: Mock arguments for local replay (JSON array of strings)
-    mock_args: Option<Vec<String>>,
-    profile: Option<bool>,
-    #[serde(default)]
-    enable_optimization_advisor: bool,
+    // Default to "info" level logging if not specified
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
+    let subscriber = fmt::Subscriber::builder()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr); // Write logs to stderr
+
+    if use_json {
+        // Output machine-parsable JSON
+        subscriber.json().flatten_event(true).init();
+    } else {
+        // Output human-readable text
+        subscriber.compact().init();
+    }
 }
 
-#[derive(Debug, Serialize)]
-struct SimulationResponse {
-    status: String,
-    error: Option<String>,
-    events: Vec<String>,
-    logs: Vec<String>,
-    flamegraph: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    optimization_report: Option<OptimizationReport>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    budget_usage: Option<BudgetUsage>,
+fn send_error(msg: String) {
+    let res = SimulationResponse {
+        status: "error".to_string(),
+        error: Some(msg),
+        events: vec![],
+        diagnostic_events: vec![],
+        categorized_events: vec![],
+        logs: vec![],
+        flamegraph: None,
+        optimization_report: None,
+        budget_usage: None,
+        source_location: None,
+    };
+    println!("{}", serde_json::to_string(&res).unwrap());
+    std::process::exit(1);
 }
 
-#[derive(Debug, Serialize)]
-struct BudgetUsage {
-    cpu_instructions: u64,
-    memory_bytes: u64,
-    operations_count: usize,
+fn execute_operations(host: &Host, operations: &[Operation]) -> Result<Vec<String>, HostError> {
+    let mut logs = Vec::new();
+    for op in operations {
+        match &op.body {
+            OperationBody::InvokeHostFunction(invoke_op) => {
+                // In a real simulation we would invoke the host function.
+                // host.invoke_function(invoke_op.host_function.clone())?;
+                // However, without a full transaction frame setup matching the network,
+                // direct invocation might fail or panic if auth is missing.
+                // For now, we attempt to invoke but catch errors if possible, or just log.
+
+                // Note: The host provided is already initialized with storage.
+                // We really should use `host.invoke_function`.
+
+                logs.push(format!("Executing InvokeHostFunction..."));
+                let val = host.invoke_function(invoke_op.host_function.clone())?;
+                logs.push(format!("Result: {:?}", val));
+            }
+            _ => {
+                logs.push(format!(
+                    "Skipping non-Soroban operation: {:?}",
+                    op.body.name()
+                ));
+            }
+        }
+    }
+    Ok(logs)
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[allow(dead_code)]
-struct StructuredError {
-    error_type: String,
-    message: String,
-    details: Option<String>,
+fn categorize_events(events: &soroban_env_host::events::Events) -> Vec<CategorizedEvent> {
+    events
+        .0
+        .iter()
+        .map(|e| {
+            let category = match e.event.type_ {
+                soroban_env_host::xdr::ContractEventType::Contract => "Contract",
+                soroban_env_host::xdr::ContractEventType::System => "System",
+                soroban_env_host::xdr::ContractEventType::Diagnostic => "Diagnostic",
+            }
+            .to_string();
+
+            let contract_id = e.event.contract_id.as_ref().map(|id| format!("{:?}", id));
+            let topics = match &e.event.body {
+                soroban_env_host::xdr::ContractEventBody::V0(v0) => {
+                    v0.topics.iter().map(|t| format!("{:?}", t)).collect()
+                }
+            };
+            let data = match &e.event.body {
+                soroban_env_host::xdr::ContractEventBody::V0(v0) => format!("{:?}", v0.data),
+            };
+
+            CategorizedEvent {
+                category,
+                event: DiagnosticEvent {
+                    event_type: match e.event.type_ {
+                        soroban_env_host::xdr::ContractEventType::Contract => {
+                            "contract".to_string()
+                        }
+                        soroban_env_host::xdr::ContractEventType::System => "system".to_string(),
+                        soroban_env_host::xdr::ContractEventType::Diagnostic => {
+                            "diagnostic".to_string()
+                        }
+                    },
+                    contract_id,
+                    topics,
+                    data,
+                    in_successful_contract_call: e.failed_call,
+                },
+            }
+        })
+        .collect()
 }
 
 fn main() {
+    // 1. Initialize the logger immediately
+    init_logger();
+
+    // 2. Log that we started
+    tracing::info!(event = "simulator_started", "Simulator initializing...");
+
     // Read JSON from Stdin
     let mut buffer = String::new();
-    if let Err(e) = io::stdin().read_to_string(&mut buffer) {
+    if let Err(e) = std::io::stdin().read_to_string(&mut buffer) {
         let res = SimulationResponse {
             status: "error".to_string(),
             error: Some(format!("Failed to read stdin: {}", e)),
             events: vec![],
+            diagnostic_events: vec![],
+            categorized_events: vec![],
             logs: vec![],
             flamegraph: None,
             optimization_report: None,
             budget_usage: None,
+            source_location: None,
         };
         println!("{}", serde_json::to_string(&res).unwrap());
+        eprintln!("Failed to read stdin: {}", e);
         return;
     }
 
@@ -87,25 +167,23 @@ fn main() {
                 status: "error".to_string(),
                 error: Some(format!("Invalid JSON: {}", e)),
                 events: vec![],
+                diagnostic_events: vec![],
+                categorized_events: vec![],
                 logs: vec![],
                 flamegraph: None,
                 optimization_report: None,
                 budget_usage: None,
+                source_location: None,
             };
             println!("{}", serde_json::to_string(&res).unwrap());
             return;
         }
     };
 
-    // Check if this is a local WASM replay (no network data)
-    if let Some(wasm_path) = &request.wasm_path {
-        return run_local_wasm_replay(wasm_path, &request.mock_args);
-    }
-
     // Decode Envelope XDR
     let envelope = match base64::engine::general_purpose::STANDARD.decode(&request.envelope_xdr) {
         Ok(bytes) => match soroban_env_host::xdr::TransactionEnvelope::from_xdr(
-            &bytes,
+            bytes,
             soroban_env_host::xdr::Limits::none(),
         ) {
             Ok(env) => env,
@@ -118,31 +196,62 @@ fn main() {
         }
     };
 
-    // Initialize Host
-    let host = soroban_env_host::Host::default();
-    host.set_diagnostic_level(soroban_env_host::DiagnosticLevel::Debug)
-        .unwrap();
+    // Decode ResultMeta XDR
+    let _result_meta = if request.result_meta_xdr.is_empty() {
+        eprintln!("Warning: ResultMetaXdr is empty. Host storage will be empty.");
+        None
+    } else {
+        match base64::engine::general_purpose::STANDARD.decode(&request.result_meta_xdr) {
+            Ok(bytes) => match soroban_env_host::xdr::TransactionResultMeta::from_xdr(
+                bytes,
+                soroban_env_host::xdr::Limits::none(),
+            ) {
+                Ok(meta) => Some(meta),
+                Err(e) => {
+                    return send_error(format!("Failed to parse ResultMeta XDR: {}", e));
+                }
+            },
+            Err(e) => {
+                eprintln!("Warning: Failed to decode ResultMeta Base64: {}. Proceeding with empty storage.", e);
+                None
+            }
+        }
+    };
 
-    // Override Ledger Info if provided
-    if request.timestamp.is_some() || request.ledger_sequence.is_some() {
-        host.with_mut_ledger_info(|ledger_info| {
-            if let Some(ts) = request.timestamp {
-                ledger_info.timestamp = ts as u64;
+    // Initialize source mapper if WASM is provided
+    let source_mapper = if let Some(wasm_base64) = &request.contract_wasm {
+        match base64::engine::general_purpose::STANDARD.decode(wasm_base64) {
+            Ok(wasm_bytes) => {
+                let mapper = SourceMapper::new(wasm_bytes);
+                if mapper.has_debug_symbols() {
+                    eprintln!("Debug symbols found in WASM");
+                    Some(mapper)
+                } else {
+                    eprintln!("No debug symbols found in WASM");
+                    None
+                }
             }
-            if let Some(seq) = request.ledger_sequence {
-                ledger_info.sequence_number = seq;
+            Err(e) => {
+                eprintln!("Failed to decode WASM base64: {}", e);
+                None
             }
-        })
-        .unwrap();
-    }
-    // Populate Host Storage
+        }
+    } else {
+        None
+    };
+
+    // Initialize Host
+    let sim_host = runner::SimHost::new(None);
+    let host = sim_host.inner;
+
     let mut loaded_entries_count = 0;
+
+    // Populate Host Storage
     if let Some(entries) = &request.ledger_entries {
         for (key_xdr, entry_xdr) in entries {
-            // Decode Key
             let _key = match base64::engine::general_purpose::STANDARD.decode(key_xdr) {
                 Ok(b) => match soroban_env_host::xdr::LedgerKey::from_xdr(
-                    &b,
+                    b,
                     soroban_env_host::xdr::Limits::none(),
                 ) {
                     Ok(k) => k,
@@ -151,10 +260,9 @@ fn main() {
                 Err(e) => return send_error(format!("Failed to decode LedgerKey Base64: {}", e)),
             };
 
-            // Decode Entry
             let _entry = match base64::engine::general_purpose::STANDARD.decode(entry_xdr) {
                 Ok(b) => match soroban_env_host::xdr::LedgerEntry::from_xdr(
-                    &b,
+                    b,
                     soroban_env_host::xdr::Limits::none(),
                 ) {
                     Ok(e) => e,
@@ -162,13 +270,11 @@ fn main() {
                 },
                 Err(e) => return send_error(format!("Failed to decode LedgerEntry Base64: {}", e)),
             };
-
-            // In real implementation, we'd inject into host storage here.
             loaded_entries_count += 1;
         }
     }
 
-    // Extract Operations from Envelope
+    // Extract Operations and Simulate
     let operations = match &envelope {
         soroban_env_host::xdr::TransactionEnvelope::Tx(tx_v1) => &tx_v1.tx.operations,
         soroban_env_host::xdr::TransactionEnvelope::TxV0(tx_v0) => &tx_v0.tx.operations,
@@ -178,7 +284,7 @@ fn main() {
     };
 
     // Wrap the operation execution in panic protection
-    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         execute_operations(&host, operations)
     }));
 
@@ -187,10 +293,17 @@ fn main() {
     let cpu_insns = budget.get_cpu_insns_consumed().unwrap_or(0);
     let mem_bytes = budget.get_mem_bytes_consumed().unwrap_or(0);
 
+    let cpu_usage_percent = (cpu_insns as f64 / CPU_LIMIT as f64) * 100.0;
+    let memory_usage_percent = (mem_bytes as f64 / MEMORY_LIMIT as f64) * 100.0;
+
     let budget_usage = BudgetUsage {
         cpu_instructions: cpu_insns,
         memory_bytes: mem_bytes,
         operations_count: operations.as_slice().len(),
+        cpu_limit: CPU_LIMIT,
+        memory_limit: MEMORY_LIMIT,
+        cpu_usage_percent,
+        memory_usage_percent,
     };
 
     let optimization_report = if request.enable_optimization_advisor {
@@ -223,26 +336,115 @@ fn main() {
     }
 
     match result {
-        Ok(exec_logs) => {
-            let events = match host.get_events() {
-                Ok(evs) => evs.0.iter().map(|e| format!("{:?}", e)).collect(),
-                Err(_) => vec!["Failed to retrieve events".to_string()],
+        Ok(Ok(exec_logs)) => {
+            // Extract both raw event strings and structured diagnostic events
+            let (events, diagnostic_events): (Vec<String>, Vec<DiagnosticEvent>) =
+                match host.get_events() {
+                    Ok(evs) => {
+                        let raw_events: Vec<String> =
+                            evs.0.iter().map(|e| format!("{:?}", e)).collect();
+                        let diag_events: Vec<DiagnosticEvent> = evs
+                            .0
+                            .iter()
+                            .map(|event| {
+                                let event_type = match &event.event.type_ {
+                                    soroban_env_host::xdr::ContractEventType::Contract => {
+                                        "contract".to_string()
+                                    }
+                                    soroban_env_host::xdr::ContractEventType::System => {
+                                        "system".to_string()
+                                    }
+                                    soroban_env_host::xdr::ContractEventType::Diagnostic => {
+                                        "diagnostic".to_string()
+                                    }
+                                };
+
+                                let contract_id = event
+                                    .event
+                                    .contract_id
+                                    .as_ref()
+                                    .map(|contract_id| format!("{:?}", contract_id));
+
+                                let (topics, data) = match &event.event.body {
+                                    soroban_env_host::xdr::ContractEventBody::V0(v0) => {
+                                        let topics: Vec<String> =
+                                            v0.topics.iter().map(|t| format!("{:?}", t)).collect();
+                                        let data = format!("{:?}", v0.data);
+                                        (topics, data)
+                                    }
+                                };
+
+                                DiagnosticEvent {
+                                    event_type,
+                                    contract_id,
+                                    topics,
+                                    data,
+                                    in_successful_contract_call: event.failed_call,
+                                }
+                            })
+                            .collect();
+                        (raw_events, diag_events)
+                    }
+                    Err(_) => (
+                        vec!["Failed to retrieve events".to_string()],
+                        Vec::<DiagnosticEvent>::new(),
+                    ),
+                };
+
+            // Capture categorized events for analyzer
+            let categorized_events = match host.get_events() {
+                Ok(evs) => categorize_events(&evs),
+                Err(_) => vec![],
             };
 
             let mut final_logs = vec![
                 format!("Host Initialized with Budget: {:?}", budget),
                 format!("Loaded {} Ledger Entries", loaded_entries_count),
+                format!("Captured {} diagnostic events", diagnostic_events.len()),
+                format!("CPU Instructions Used: {}", cpu_insns),
+                format!("Memory Bytes Used: {}", mem_bytes),
             ];
-            final_logs.extend(exec_logs);
+            for log in exec_logs {
+                final_logs.push(log);
+            }
 
             let response = SimulationResponse {
                 status: "success".to_string(),
                 error: None,
                 events,
+                diagnostic_events,
+                categorized_events,
                 logs: final_logs,
                 flamegraph: flamegraph_svg,
                 optimization_report,
                 budget_usage: Some(budget_usage),
+                source_location: None,
+            };
+
+            println!("{}", serde_json::to_string(&response).unwrap());
+        }
+        Ok(Err(host_error)) => {
+            // Host error during execution (e.g., contract trap, validation failure)
+            let structured_error = StructuredError {
+                error_type: "HostError".to_string(),
+                message: format!("{:?}", host_error),
+                details: Some(format!(
+                    "Contract execution failed with host error: {:?}",
+                    host_error
+                )),
+            };
+
+            let response = SimulationResponse {
+                status: "error".to_string(),
+                error: Some(serde_json::to_string(&structured_error).unwrap()),
+                events: vec![],
+                diagnostic_events: vec![],
+                categorized_events: vec![],
+                logs: vec![],
+                flamegraph: None,
+                optimization_report: None,
+                budget_usage: None,
+                source_location: None,
             };
             println!("{}", serde_json::to_string(&response).unwrap());
         }
@@ -259,39 +461,17 @@ fn main() {
                 status: "error".to_string(),
                 error: Some(format!("Simulator panicked: {}", panic_msg)),
                 events: vec![],
+                diagnostic_events: vec![],
+                categorized_events: vec![],
                 logs: vec![format!("PANIC: {}", panic_msg)],
                 flamegraph: None,
                 optimization_report: None,
                 budget_usage: None,
+                source_location: None,
             };
             println!("{}", serde_json::to_string(&response).unwrap());
         }
     }
-}
-
-fn execute_operations(
-    _host: &soroban_env_host::Host,
-    operations: &soroban_env_host::xdr::VecM<soroban_env_host::xdr::Operation, 100>,
-) -> Vec<String> {
-    let mut logs = vec![];
-    for (i, op) in operations.as_slice().iter().enumerate() {
-        logs.push(format!("Processing operation {}: {:?}", i, op.body));
-        // Placeholder for real host invocation
-    }
-    logs
-}
-
-fn send_error(msg: String) {
-    let res = SimulationResponse {
-        status: "error".to_string(),
-        error: Some(msg),
-        events: vec![],
-        logs: vec![],
-        flamegraph: None,
-        optimization_report: None,
-        budget_usage: None,
-    };
-    println!("{}", serde_json::to_string(&res).unwrap());
 }
 
 #[cfg(test)]
@@ -299,97 +479,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_time_travel_deserialization() {
-        let json = r#"{"envelope_xdr": "AAAA", "result_meta_xdr": "BBBB", "timestamp": 1738077842, "ledger_sequence": 1234}"#;
-        let req: SimulationRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(req.timestamp, Some(1738077842));
-        assert_eq!(req.ledger_sequence, Some(1234));
+    fn test_decode_vm_traps() {
+        let msg = decode_error("Error: Wasm Trap: out of bounds memory access");
+        assert!(msg.contains("VM Trap: Out of Bounds Access"));
     }
-}
-
-fn run_local_wasm_replay(wasm_path: &str, mock_args: &Option<Vec<String>>) {
-    use std::fs;
-    use soroban_env_host::{
-        xdr::{ScVal, ScSymbol, ScAddress},
-        Host,
-    };
-
-    eprintln!("🔧 Local WASM Replay Mode");
-    eprintln!("WASM Path: {}", wasm_path);
-    eprintln!("⚠️  WARNING: Using Mock State (not mainnet data)");
-    eprintln!();
-
-    // Read WASM file
-    let wasm_bytes = match fs::read(wasm_path) {
-        Ok(bytes) => {
-            eprintln!("✓ Loaded WASM file: {} bytes", bytes.len());
-            bytes
-        }
-        Err(e) => {
-            return send_error(format!("Failed to read WASM file: {}", e));
-        }
-    };
-
-    // Initialize Host with mock state
-    let host = soroban_env_host::Host::default();
-    host.set_diagnostic_level(soroban_env_host::DiagnosticLevel::Debug)
-        .unwrap();
-
-    eprintln!("✓ Initialized Host with diagnostic level: Debug");
-
-    // TODO: In a full implementation, we would:
-    // 1. Parse the WASM module to extract contract metadata
-    // 2. Deploy the contract to the host
-    // 3. Parse mock_args into proper ScVal types
-    // 4. Invoke the contract function with the arguments
-    // 5. Capture and return the result
-
-    // For now, we'll create a basic response showing the setup worked
-    let mut logs = vec![
-        format!("Host Initialized with Budget: {:?}", host.budget_cloned()),
-        format!("WASM file loaded: {} bytes", wasm_bytes.len()),
-        "Mock State Provider: Active".to_string(),
-    ];
-
-    // Parse Arguments (Mock)
-    if let Some(args) = mock_args {
-        if !args.is_empty() {
-             eprintln!("▶ Would invoke function: {}", args[0]);
-             eprintln!("  With args: {:?}", &args[1..]);
-        }
-    }
-
-    logs.push("".to_string());
-    logs.push("⚠️  Note: Full WASM execution not yet implemented".to_string());
-    logs.push(
-        "This is a mock response showing the local replay infrastructure is working.".to_string(),
-    );
-
-    // Capture diagnostic events
-    // Capture Logs/Events
-    let events = match host.get_events() {
-        Ok(evs) => evs
-            .0
-            .iter()
-            .map(|e| format!("{:?}", e))
-            .collect::<Vec<String>>(),
-        Err(e) => vec![format!("Failed to retrieve events: {:?}", e)],
-    };
-
-    let logs = vec![
-        format!("Host Budget: {:?}", host.budget_cloned()),
-        "Execution: Skipped (Build Issue)".to_string(),
-    ];
-
-    let response = SimulationResponse {
-        status: "success".to_string(),
-        error: None,
-        events,
-        logs,
-        flamegraph: None,
-        optimization_report: None,
-        budget_usage: None,
-    };
-
-    println!("{}", serde_json::to_string(&response).unwrap());
 }

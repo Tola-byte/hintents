@@ -10,8 +10,6 @@ import (
 	"github.com/dotandev/hintents/internal/updater"
 )
 
-// Version is the current version of erst
-// This should be set via ldflags during build: -ldflags "-X main.Version=v1.2.3"
 var Version = "dev"
 
 func main() {

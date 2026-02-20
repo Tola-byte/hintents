@@ -9,16 +9,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stellar/go/clients/horizonclient"
-	hProtocol "github.com/stellar/go/protocols/horizon"
-	effects "github.com/stellar/go/protocols/horizon/effects"
-	operations "github.com/stellar/go/protocols/horizon/operations"
-	"github.com/stellar/go/txnbuild"
+	"github.com/stellar/go-stellar-sdk/clients/horizonclient"
+	hProtocol "github.com/stellar/go-stellar-sdk/protocols/horizon"
+	effects "github.com/stellar/go-stellar-sdk/protocols/horizon/effects"
+	operations "github.com/stellar/go-stellar-sdk/protocols/horizon/operations"
+	"github.com/stellar/go-stellar-sdk/txnbuild"
 	"github.com/stretchr/testify/assert"
 )
 
 type mockHorizonClient struct {
 	TransactionDetailFunc func(hash string) (hProtocol.Transaction, error)
+	LedgerDetailFunc      func(sequence uint32) (hProtocol.Ledger, error)
 }
 
 func (m *mockHorizonClient) TransactionDetail(hash string) (hProtocol.Transaction, error) {
@@ -43,6 +44,9 @@ func (m *mockHorizonClient) Ledgers(request horizonclient.LedgerRequest) (hProto
 	return hProtocol.LedgersPage{}, nil
 }
 func (m *mockHorizonClient) LedgerDetail(sequence uint32) (hProtocol.Ledger, error) {
+	if m.LedgerDetailFunc != nil {
+		return m.LedgerDetailFunc(sequence)
+	}
 	return hProtocol.Ledger{}, nil
 }
 func (m *mockHorizonClient) FeeStats() (hProtocol.FeeStats, error) { return hProtocol.FeeStats{}, nil }
@@ -212,7 +216,11 @@ type testClient struct {
 
 func newTestClient(mock horizonclient.ClientInterface) *testClient {
 	return &testClient{
-		&Client{Horizon: mock.(*mockHorizonClient)},
+		&Client{
+			Horizon:    mock.(*mockHorizonClient),
+			HorizonURL: "https://horizon-testnet.stellar.org",
+			AltURLs:    []string{"https://horizon-testnet.stellar.org"},
+		},
 	}
 }
 

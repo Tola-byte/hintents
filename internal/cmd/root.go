@@ -8,9 +8,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Version is set by main.go from build flags
-var Version = "dev"
-
 // Global flag variables
 var (
 	TimestampFlag int64
@@ -78,6 +75,4 @@ func init() {
 	)
 
 	// Register commands
-	rootCmd.AddCommand(versionCmd)
 }
-

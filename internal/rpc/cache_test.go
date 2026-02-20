@@ -11,8 +11,9 @@ package rpc
 import (
 	"encoding/hex"
 	"testing"
+	"time"
 
-	"github.com/stellar/go/xdr"
+	"github.com/stellar/go-stellar-sdk/xdr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -871,5 +872,149 @@ func BenchmarkLedgerKeyHashing_AllTypes(b *testing.B) {
 				b.Fatal(err)
 			}
 		}
+	}
+}
+func TestCacheTTL_SetAndGet(t *testing.T) {
+	key := "test-key"
+	value := "test-value"
+	ttl := 1 * time.Hour
+
+	err := SetWithTTL(key, value, ttl)
+	require.NoError(t, err)
+
+	retrieved, found, err := Get(key)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, value, retrieved)
+}
+
+func TestCacheTTL_DefaultTTL(t *testing.T) {
+	key := "default-ttl-key"
+	value := "default-value"
+
+	err := Set(key, value)
+	require.NoError(t, err)
+
+	retrieved, found, err := Get(key)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, value, retrieved)
+}
+
+func TestCacheTTL_Expiration(t *testing.T) {
+	key := "expiring-key"
+	value := "expiring-value"
+	ttl := 100 * time.Millisecond
+
+	err := SetWithTTL(key, value, ttl)
+	require.NoError(t, err)
+
+	retrieved, found, err := Get(key)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, value, retrieved)
+
+	time.Sleep(150 * time.Millisecond)
+
+	_, found, err = Get(key)
+	require.NoError(t, err)
+	require.False(t, found)
+}
+
+func TestCacheTTL_ZeroTTLUsesDefault(t *testing.T) {
+	key := "zero-ttl-key"
+	value := "zero-ttl-value"
+
+	err := SetWithTTL(key, value, 0)
+	require.NoError(t, err)
+
+	retrieved, found, err := Get(key)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, value, retrieved)
+}
+
+func TestCacheTTL_NegativeTTLUsesDefault(t *testing.T) {
+	key := "negative-ttl-key"
+	value := "negative-ttl-value"
+
+	err := SetWithTTL(key, value, -5*time.Second)
+	require.NoError(t, err)
+
+	retrieved, found, err := Get(key)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, value, retrieved)
+}
+
+func TestCacheTTL_MultipleEntriesWithDifferentTTLs(t *testing.T) {
+	key1 := "short-ttl"
+	key2 := "long-ttl"
+	value := "test-value"
+
+	err := SetWithTTL(key1, value, 50*time.Millisecond)
+	require.NoError(t, err)
+
+	err = SetWithTTL(key2, value, 5*time.Second)
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	_, found1, _ := Get(key1)
+	_, found2, _ := Get(key2)
+
+	require.False(t, found1)
+	require.True(t, found2)
+}
+
+func TestCacheTTL_InvalidateAfterExpiry(t *testing.T) {
+	key := "auto-cleanup-key"
+	value := "auto-cleanup-value"
+
+	err := SetWithTTL(key, value, 50*time.Millisecond)
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	_, found, err := Get(key)
+	require.NoError(t, err)
+	require.False(t, found)
+
+	err = Invalidate(key)
+	require.NoError(t, err)
+}
+
+func TestCacheTTL_SetWithCustomTTL(t *testing.T) {
+	key := "custom-ttl"
+	value := "custom-value"
+	customTTL := 200 * time.Millisecond
+
+	err := SetWithTTL(key, value, customTTL)
+	require.NoError(t, err)
+
+	retrieved, found, err := Get(key)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, value, retrieved)
+
+	time.Sleep(250 * time.Millisecond)
+
+	_, found, err = Get(key)
+	require.NoError(t, err)
+	require.False(t, found)
+}
+
+func BenchmarkCacheTTL_Set(b *testing.B) {
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		SetWithTTL("bench-key", "bench-value", 24*time.Hour)
+	}
+}
+
+func BenchmarkCacheTTL_Get(b *testing.B) {
+	SetWithTTL("bench-get", "bench-value", 24*time.Hour)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		Get("bench-get")
 	}
 }
