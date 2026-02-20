@@ -105,3 +105,64 @@ func TestCompareResults_DifferentStatus(t *testing.T) {
 	require.True(t, diff.StatusChanged)
 	require.Contains(t, diff.Summary, "status changed")
 }
+
+func TestCompareResults_BudgetAndCallPathDiff(t *testing.T) {
+	onChain := &simulator.SimulationResponse{
+		Status: "success",
+		Events: []string{
+			"invoke_contract: token.transfer",
+			"contract_call: token.balance",
+		},
+		Logs: []string{
+			"Processing operation 0: InvokeHostFunction",
+		},
+		BudgetUsage: &simulator.BudgetUsage{
+			CPUInstructions: 100,
+			MemoryBytes:     200,
+			OperationsCount: 2,
+		},
+	}
+
+	local := &simulator.SimulationResponse{
+		Status: "success",
+		Events: []string{
+			"invoke_contract: token.transfer",
+			"contract_call: token.approve",
+		},
+		Logs: []string{
+			"Processing operation 0: InvokeHostFunction",
+		},
+		BudgetUsage: &simulator.BudgetUsage{
+			CPUInstructions: 140,
+			MemoryBytes:     220,
+			OperationsCount: 3,
+		},
+	}
+
+	diff := CompareResults(onChain, local)
+
+	require.True(t, diff.BudgetDiff.Available)
+	require.Equal(t, int64(40), diff.BudgetDiff.CPUOps)
+	require.Equal(t, int64(20), diff.BudgetDiff.Memory)
+	require.Equal(t, int64(1), diff.BudgetDiff.OpsCount)
+	require.Equal(t, "modified", diff.CallPathDiff[1].Type)
+	require.Contains(t, diff.Summary, "call path step(s) diverged")
+	require.Contains(t, diff.Summary, "budget usage changed")
+}
+
+func TestFormatSideBySide_EventColumns(t *testing.T) {
+	onChain := &simulator.SimulationResponse{
+		Status: "success",
+		Events: []string{"invoke_contract: a"},
+	}
+	local := &simulator.SimulationResponse{
+		Status: "success",
+		Events: []string{"invoke_contract: b"},
+	}
+
+	diff := CompareResults(onChain, local)
+	formatted := diff.FormatSideBySide()
+	require.Contains(t, formatted, "=== Event Diff (On-Chain | Local) ===")
+	require.Contains(t, formatted, "On-Chain")
+	require.Contains(t, formatted, "Local")
+}

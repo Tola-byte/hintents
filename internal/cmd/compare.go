@@ -4,9 +4,9 @@
 package cmd
 
 import (
-	"encoding/base64"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/dotandev/hintents/internal/compare"
 	"github.com/dotandev/hintents/internal/errors"
@@ -17,6 +17,7 @@ import (
 
 var (
 	compareWasmFlag string
+	compareArgsFlag []string
 )
 
 var compareCmd = &cobra.Command{
@@ -72,42 +73,56 @@ Example:
 			return fmt.Errorf("failed to initialize simulator: %w", err)
 		}
 
-		// Run on-chain simulation (normal flow)
-		fmt.Printf("Running on-chain simulation...\n")
+		keys, err := extractLedgerKeys(txResp.ResultMetaXdr)
+		if err != nil {
+			return fmt.Errorf("failed to extract ledger keys: %w", err)
+		}
+
+		ledgerEntries, err := client.GetLedgerEntries(ctx, keys)
+		if err != nil {
+			return fmt.Errorf("failed to fetch ledger entries: %w", err)
+		}
+
+		// Run two passes in parallel: on-chain and local-WASM replay.
+		fmt.Printf("Running on-chain and local simulations...\n")
 		onChainReq := &simulator.SimulationRequest{
 			EnvelopeXdr:   txResp.EnvelopeXdr,
 			ResultMetaXdr: txResp.ResultMetaXdr,
-			LedgerEntries: nil,
+			LedgerEntries: ledgerEntries,
 		}
-		onChainResp, err := runner.Run(onChainReq)
-		if err != nil {
-			return fmt.Errorf("on-chain simulation failed: %w", err)
-		}
-
-		// Read local WASM file
-		wasmBytes, err := os.ReadFile(compareWasmFlag)
-		if err != nil {
-			return fmt.Errorf("failed to read WASM file: %w", err)
-		}
-		wasmBase64 := base64.StdEncoding.EncodeToString(wasmBytes)
-
-		// Run local WASM simulation
-		// NOTE: For MVP, we inject WASM into the request.
-		// The Rust simulator needs to be updated to actually use this field.
-		fmt.Printf("Running local WASM simulation...\n")
+		localWasmPath := compareWasmFlag
 		localReq := &simulator.SimulationRequest{
 			EnvelopeXdr:   txResp.EnvelopeXdr,
 			ResultMetaXdr: txResp.ResultMetaXdr,
-			LedgerEntries: nil,
-			// TODO: Add WasmOverride field to SimulationRequest schema
-			// and update Rust simulator to use it when loading contracts
+			LedgerEntries: ledgerEntries,
+			WasmPath:      &localWasmPath,
+			MockArgs:      &compareArgsFlag,
 		}
-		// For now, we'll run the same simulation and note the limitation
-		// In a full implementation, we'd inject the WASM into ledger entries
-		// or pass it as a separate field that the simulator uses.
-		localResp, err := runner.Run(localReq)
-		if err != nil {
-			return fmt.Errorf("local WASM simulation failed: %w", err)
+
+		var (
+			wg          sync.WaitGroup
+			onChainResp *simulator.SimulationResponse
+			localResp   *simulator.SimulationResponse
+			onChainErr  error
+			localSimErr error
+		)
+
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			onChainResp, onChainErr = runner.Run(onChainReq)
+		}()
+		go func() {
+			defer wg.Done()
+			localResp, localSimErr = runner.Run(localReq)
+		}()
+		wg.Wait()
+
+		if onChainErr != nil {
+			return fmt.Errorf("on-chain simulation failed: %w", onChainErr)
+		}
+		if localSimErr != nil {
+			return fmt.Errorf("local WASM simulation failed: %w", localSimErr)
 		}
 
 		// Compare results
@@ -116,20 +131,13 @@ Example:
 		fmt.Printf("\n=== Comparison Results ===\n")
 		fmt.Print(diff.FormatSideBySide())
 
-		// Show WASM info
-		fmt.Printf("\n=== WASM Info ===\n")
-		fmt.Printf("Local WASM size: %d bytes (base64: %d chars)\n", len(wasmBytes), len(wasmBase64))
-		fmt.Printf("\nNote: Full WASM injection requires Rust simulator updates.\n")
-		fmt.Printf("Current implementation shows diff structure; actual WASM override\n")
-		fmt.Printf("needs to be implemented in simulator/src/main.rs to replace\n")
-		fmt.Printf("contract code from ledger entries with the provided WASM file.\n")
-
 		return nil
 	},
 }
 
 func init() {
 	compareCmd.Flags().StringVar(&compareWasmFlag, "wasm", "", "Path to local WASM file to compare against on-chain version (required)")
+	compareCmd.Flags().StringSliceVar(&compareArgsFlag, "args", []string{}, "Mock arguments for local WASM replay")
 	compareCmd.Flags().StringVarP(&networkFlag, "network", "n", string(rpc.Mainnet), "Stellar network to use (testnet, mainnet, futurenet)")
 	compareCmd.Flags().StringVar(&rpcURLFlag, "rpc-url", "", "Custom Horizon RPC URL to use")
 

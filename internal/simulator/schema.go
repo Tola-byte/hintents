@@ -45,12 +45,19 @@ type AuthTraceOptions struct {
 }
 
 type SimulationResponse struct {
-	Status     string               `json:"status"` // "success" or "error"
-	Error      string               `json:"error,omitempty"`
-	Events     []string             `json:"events,omitempty"`     // Diagnostic events
-	Logs       []string             `json:"logs,omitempty"`       // Host debug logs
-	Flamegraph string               `json:"flamegraph,omitempty"` // SVG flamegraph
-	AuthTrace  *authtrace.AuthTrace `json:"auth_trace,omitempty"`
+	Status      string               `json:"status"` // "success" or "error"
+	Error       string               `json:"error,omitempty"`
+	Events      []string             `json:"events,omitempty"`     // Diagnostic events
+	Logs        []string             `json:"logs,omitempty"`       // Host debug logs
+	Flamegraph  string               `json:"flamegraph,omitempty"` // SVG flamegraph
+	BudgetUsage *BudgetUsage         `json:"budget_usage,omitempty"`
+	AuthTrace   *authtrace.AuthTrace `json:"auth_trace,omitempty"`
+}
+
+type BudgetUsage struct {
+	CPUInstructions uint64 `json:"cpu_instructions"`
+	MemoryBytes     uint64 `json:"memory_bytes"`
+	OperationsCount int    `json:"operations_count"`
 }
 
 // Session represents a stored simulation result
