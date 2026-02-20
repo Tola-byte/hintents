@@ -113,7 +113,8 @@ jobs:
     needs: license-headers
     strategy:
       matrix:
-        rust-version: [stable, "1.78"]
+        # resolver = "3" requires a newer Cargo than 1.78
+        rust-version: [stable, "1.82", "1.83"]
     defaults:
       run:
         working-directory: simulator
