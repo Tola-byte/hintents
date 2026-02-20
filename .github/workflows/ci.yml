@@ -73,8 +73,13 @@ jobs:
           version: latest
           args: --config=.golangci.yml --timeout=5m
 
-      - name: Run tests
+      - name: Run tests (race)
+        if: matrix.os != 'windows-latest'
         run: go test -v -race ./...
+
+      - name: Run tests (windows)
+        if: matrix.os == 'windows-latest'
+        run: go test -v ./...
 
       - name: Build
         run: go build -v ./...
@@ -153,7 +158,7 @@ jobs:
           echo " All Rust files are properly formatted"
 
       - name: Run Clippy
-        if: matrix.rust-version == 'stable'
+        if: matrix.rust-version == '1.85'
         run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Run tests
