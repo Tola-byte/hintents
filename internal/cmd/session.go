@@ -6,6 +6,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/dotandev/hintents/internal/session"
@@ -191,6 +192,17 @@ Use 'erst session list' to see available sessions.`,
 				if len(resp.Logs) > 0 {
 					fmt.Printf("  Logs: %d\n", len(resp.Logs))
 				}
+			}
+		}
+
+		// Show persisted viewer state if any (best-effort).
+		if uiStore, err := session.NewUIStateStore(); err == nil {
+			defer uiStore.Close()
+			if sections, err := uiStore.LoadSectionState(ctx, data.TxHash); err == nil && len(sections) > 0 {
+				fmt.Printf("\nViewer state: [%s]\n", strings.Join(sections, ", "))
+			}
+			if queries, err := uiStore.RecentSearches(ctx, 5); err == nil && len(queries) > 0 {
+				fmt.Printf("Recent searches: %s\n", strings.Join(queries, ", "))
 			}
 		}
 
