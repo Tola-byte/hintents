@@ -23,7 +23,10 @@ const (
 	sgrBold    = "\033[1m"
 )
 
-type ANSIRenderer struct{}
+var _ Renderer = (*ANSIRenderer)(nil)
+
+type ANSIRenderer struct {
+}
 
 func NewANSIRenderer() *ANSIRenderer {
 	return &ANSIRenderer{}
