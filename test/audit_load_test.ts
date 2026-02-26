@@ -1,3 +1,6 @@
+// Copyright (c) 2026 dotandev
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
 /**
  * HSM Signing Load Test - Benchmarking enterprise-scale transaction signing
  * Issue #342: Benchmark the exact performance capacity of audit:sign when dealing with 10k transactions

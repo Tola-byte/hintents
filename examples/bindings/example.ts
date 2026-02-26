@@ -1,3 +1,6 @@
+// Copyright (c) 2026 dotandev
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
 // Example usage of generated TypeScript bindings
 import * as StellarSdk from '@stellar/stellar-sdk';
 
