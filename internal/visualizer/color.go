@@ -13,6 +13,8 @@ import (
 var defaultRenderer terminal.Renderer = terminal.NewANSIRenderer()
 
 // ColorEnabled reports whether ANSI color output should be used.
+// Checks NO_COLOR and TERM=dumb environment variables on every call
+// so that tests can control color via env vars dynamically.
 func ColorEnabled() bool {
 	// NO_COLOR must always take precedence.
 	if _, ok := os.LookupEnv("NO_COLOR"); ok {
@@ -25,6 +27,18 @@ func ColorEnabled() bool {
 		return false
 	}
 	return isatty.IsTerminal(os.Stdout.Fd())
+}
+
+// colorMap maps color names to ANSI SGR codes.
+var colorMap = map[string]string{
+	"red":     sgrRed,
+	"green":   sgrGreen,
+	"yellow":  sgrYellow,
+	"blue":    sgrBlue,
+	"magenta": sgrMagenta,
+	"cyan":    sgrCyan,
+	"bold":    sgrBold,
+	"dim":     sgrDim,
 }
 
 // Colorize returns text with ANSI color if enabled, otherwise plain text.

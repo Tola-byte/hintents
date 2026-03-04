@@ -16,6 +16,8 @@ import (
 var (
 	traceFile      string
 	traceThemeFlag string
+	tracePrint     bool
+	traceNoColor   bool
 )
 
 var traceCmd = &cobra.Command{
@@ -30,9 +32,14 @@ The trace viewer allows you to:
 - Reconstruct state at any point
 - View memory and host state changes
 
+Use --print for a one-shot, colour-coded ASCII tree report suitable for CI
+logs or piping to other tools. Add --no-color to disable ANSI colours.
+
 Example:
   erst trace execution.json
-  erst trace --file debug_trace.json`,
+  erst trace --file debug_trace.json
+  erst trace --print execution.json
+  erst trace --print --no-color execution.json | less`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Apply theme if specified, otherwise auto-detect
@@ -67,6 +74,15 @@ Example:
 			return errors.WrapUnmarshalFailed(err, "trace")
 		}
 
+		// --print: render a rich ASCII tree report then exit (non-interactive)
+		if tracePrint {
+			opts := trace.PrintOptions{
+				NoColor: traceNoColor,
+			}
+			trace.PrintExecutionTrace(executionTrace, opts)
+			return nil
+		}
+
 		// Start interactive viewer
 		viewer := trace.NewInteractiveViewer(executionTrace)
 		return viewer.Start()
@@ -76,6 +92,8 @@ Example:
 func init() {
 	traceCmd.Flags().StringVarP(&traceFile, "file", "f", "", "Trace file to load")
 	traceCmd.Flags().StringVar(&traceThemeFlag, "theme", "", "Color theme (default, deuteranopia, protanopia, tritanopia, high-contrast)")
+	traceCmd.Flags().BoolVar(&tracePrint, "print", false, "Print a rich ASCII tree report and exit (non-interactive)")
+	traceCmd.Flags().BoolVar(&traceNoColor, "no-color", false, "Disable ANSI colour output (also honoured via NO_COLOR env var)")
 
 	_ = traceCmd.RegisterFlagCompletionFunc("theme", completeThemeFlag)
 

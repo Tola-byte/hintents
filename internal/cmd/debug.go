@@ -35,24 +35,34 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 var (
-	networkFlag        string
-	rpcURLFlag         string
-	rpcTokenFlag       string
-	tracingEnabled     bool
-	otlpExporterURL    string
-	generateTrace      bool
-	traceOutputFile    string
-	snapshotFlag       string
-	compareNetworkFlag string
-	verbose            bool
-	wasmPath           string
-	args               []string
-	noCacheFlag        bool
-	demoMode           bool
-	watchFlag          bool
-	watchTimeoutFlag   int
-	mockBaseFeeFlag    uint32
-	mockGasPriceFlag   uint64
+	networkFlag         string
+	rpcURLFlag          string
+	rpcTokenFlag        string
+	tracingEnabled      bool
+	otlpExporterURL     string
+	generateTrace       bool
+	traceOutputFile     string
+	snapshotFlag        string
+	compareNetworkFlag  string
+	verbose             bool
+	wasmPath            string
+	wasmOptimizeFlag    bool
+	args                []string
+	themeFlag           string
+	noCacheFlag         bool
+	demoMode            bool
+	watchFlag           bool
+	watchTimeoutFlag    int
+	protocolVersionFlag uint32
+	auditKeyFlag        string
+	publishIPFSFlag     bool
+	publishArweaveFlag  bool
+	ipfsNodeFlag        string
+	arweaveGatewayFlag  string
+	arweaveWalletFlag   string
+	mockTimeFlag        int64
+	mockBaseFeeFlag     uint32
+	mockGasPriceFlag    uint64
 )
 
 // DebugCommand holds dependencies for the debug command
@@ -673,6 +683,58 @@ Local WASM Replay Mode:
 		SetCurrentSession(sessionData)
 		fmt.Printf("\nSession created: %s\n", sessionData.ID)
 		fmt.Printf("Run 'erst session save' to persist this session.\n")
+
+		// Publish signed audit trail to decentralised storage when requested.
+		if publishIPFSFlag || publishArweaveFlag {
+			if auditKeyFlag == "" {
+				return errors.WrapCliArgumentRequired("audit-key")
+			}
+			auditLog, auditErr := Generate(
+				txHash,
+				resp.EnvelopeXdr,
+				resp.ResultMetaXdr,
+				lastSimResp.Events,
+				lastSimResp.Logs,
+				auditKeyFlag,
+				nil,
+			)
+			if auditErr != nil {
+				return fmt.Errorf("failed to generate audit log: %w", auditErr)
+			}
+			auditBytes, auditErr := json.Marshal(auditLog)
+			if auditErr != nil {
+				return fmt.Errorf("failed to marshal audit log: %w", auditErr)
+			}
+
+			pub := decenstorage.New(decenstorage.PublishConfig{
+				IPFSNode:       ipfsNodeFlag,
+				ArweaveGateway: arweaveGatewayFlag,
+				ArweaveWallet:  arweaveWalletFlag,
+			})
+
+			fmt.Printf("\n=== Decentralised Storage ===\n")
+
+			if publishIPFSFlag {
+				result, ipfsErr := pub.PublishIPFS(ctx, auditBytes)
+				if ipfsErr != nil {
+					fmt.Printf("IPFS publish failed: %v\n", ipfsErr)
+				} else {
+					fmt.Printf("IPFS CID : %s\n", result.CID)
+					fmt.Printf("IPFS URL : %s\n", result.URL)
+				}
+			}
+
+			if publishArweaveFlag {
+				result, arErr := pub.PublishArweave(ctx, auditBytes)
+				if arErr != nil {
+					fmt.Printf("Arweave publish failed: %v\n", arErr)
+				} else {
+					fmt.Printf("Arweave TXID : %s\n", result.TXID)
+					fmt.Printf("Arweave URL  : %s\n", result.URL)
+				}
+			}
+		}
+
 		return nil
 	},
 }
@@ -1075,6 +1137,9 @@ func init() {
 	debugCmd.Flags().IntVar(&watchTimeoutFlag, "watch-timeout", 30, "Timeout in seconds for watch mode")
 	debugCmd.Flags().Uint32Var(&mockBaseFeeFlag, "mock-base-fee", 0, "Override base fee (stroops) for local fee sufficiency checks")
 	debugCmd.Flags().Uint64Var(&mockGasPriceFlag, "mock-gas-price", 0, "Override gas price multiplier for local fee sufficiency checks")
+	debugCmd.Flags().StringVar(&themeFlag, "theme", "", "Color theme override (dark, light, none)")
+	debugCmd.Flags().Int64Var(&mockTimeFlag, "mock-time", 0, "Override ledger timestamp for simulation (Unix seconds)")
+	debugCmd.Flags().Uint32Var(&protocolVersionFlag, "protocol-version", 0, "Override protocol version for simulation")
 
 	rootCmd.AddCommand(debugCmd)
 }

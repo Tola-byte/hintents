@@ -27,14 +27,12 @@ func newRetryHTTPClient() *http.Client {
 
 func TestSimulateTransactionRetriesOnRateLimit(t *testing.T) {
 	var calls int32
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if atomic.AddInt32(&calls, 1) == 1 {
 			w.Header().Set("Retry-After", "1")
 			w.WriteHeader(http.StatusTooManyRequests)
 			return
 		}
-
 		resp := SimulateTransactionResponse{
 			Jsonrpc: "2.0",
 			ID:      1,
@@ -60,11 +58,9 @@ func TestSimulateTransactionRetriesOnRateLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected retry to succeed, got error: %v", err)
 	}
-
 	if resp.Result.MinResourceFee != "1" {
 		t.Fatalf("unexpected response: %+v", resp.Result)
 	}
-
 	if atomic.LoadInt32(&calls) < 2 {
 		t.Fatalf("expected at least 2 calls, got %d", atomic.LoadInt32(&calls))
 	}
@@ -72,15 +68,12 @@ func TestSimulateTransactionRetriesOnRateLimit(t *testing.T) {
 
 func TestGetLedgerEntriesRetriesOnRateLimit(t *testing.T) {
 	var calls int32
-	validKey := createTestLedgerKey(t, 42)
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if atomic.AddInt32(&calls, 1) == 1 {
 			w.Header().Set("Retry-After", "1")
 			w.WriteHeader(http.StatusTooManyRequests)
 			return
 		}
-
 		resp := GetLedgerEntriesResponse{
 			Jsonrpc: "2.0",
 			ID:      1,
@@ -108,11 +101,9 @@ func TestGetLedgerEntriesRetriesOnRateLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected retry to succeed, got error: %v", err)
 	}
-
 	if entries[validKey] != "BBB" {
 		t.Fatalf("unexpected ledger entry: %v", entries)
 	}
-
 	if atomic.LoadInt32(&calls) < 2 {
 		t.Fatalf("expected at least 2 calls, got %d", atomic.LoadInt32(&calls))
 	}

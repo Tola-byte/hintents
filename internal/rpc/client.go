@@ -303,6 +303,14 @@ func (c *Client) rotateURL() bool {
 	return true
 }
 
+// attempts returns the number of retry attempts for failover loops (at least 1)
+func (c *Client) attempts() int {
+	if len(c.AltURLs) == 0 {
+		return 1
+	}
+	return len(c.AltURLs)
+}
+
 func (c *Client) getHTTPClient() *http.Client {
 	if c.httpClient != nil {
 		return c.httpClient
@@ -583,6 +591,10 @@ func (c *Client) GetLedgerHeader(ctx context.Context, sequence uint32) (*LedgerH
 		if len(c.AltURLs) <= 1 {
 			return nil, err
 		}
+	}
+	// Single-node path: return the typed error directly so callers can use Is/As.
+	if len(failures) == 1 {
+		return nil, failures[0].Reason
 	}
 	return nil, &AllNodesFailedError{Failures: failures}
 }
@@ -1327,6 +1339,9 @@ func (c *Client) GetHealth(ctx context.Context) (*GetHealthResponse, error) {
 
 func (c *Client) getHealthAttempt(ctx context.Context) (healthResp *GetHealthResponse, err error) {
 	targetURL := c.SorobanURL
+	if targetURL == "" {
+		targetURL = c.HorizonURL
+	}
 	timer := c.startMethodTimer(ctx, "rpc.get_health", map[string]string{
 		"network": c.GetNetworkName(),
 		"rpc_url": targetURL,
@@ -1360,6 +1375,7 @@ func (c *Client) getHealthAttempt(ctx context.Context) (healthResp *GetHealthRes
 	if targetURL == "" {
 		targetURL = c.HorizonURL
 	}
+
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewBuffer(bodyBytes))
 	if err != nil {
 		return nil, errors.NewRPCError(errors.CodeRPCConnectionFailed, err)

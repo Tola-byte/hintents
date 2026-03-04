@@ -565,6 +565,7 @@ func (v *InteractiveViewer) showHelp() {
 	fmt.Println()
 	fmt.Println("Display:")
 	fmt.Println("  s, show, state          - Show current state")
+	fmt.Println("  e, expand               - Expand / show full detail of current step")
 	fmt.Println("  S                       - Toggle hiding/showing Rust core::* traces")
 	fmt.Println("  e, expand               - Expand / collapse the current trace node")
 	fmt.Println("  r, reconstruct [step]   - Reconstruct state")

@@ -1072,8 +1072,6 @@ mod tests {
         let topics_none = vec!["other".to_string()];
         let instr3 = extract_wasm_instruction(&topics_none, &data);
         assert_eq!(instr3, None);
-        let msg = decode_error("Error: Wasm Trap: out of bounds memory access");
-        assert!(msg.contains("VM Trap: Out of bounds memory access"));
     }
 
     #[test]

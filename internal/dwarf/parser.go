@@ -492,7 +492,8 @@ func (p *Parser) FindLocalVarsAt(addr uint64) ([]LocalVar, error) {
 	return inScope, nil
 }
 
-// GetSourceLocation finds the source location for a given address
+// GetSourceLocation finds the source location for a given address.
+// It uses the standard library's debug/dwarf line reader.
 func (p *Parser) GetSourceLocation(addr uint64) (*SourceLocation, error) {
 	if p.data == nil {
 		return nil, ErrNoDebugInfo
@@ -575,7 +576,6 @@ const (
 	dwOpLit0       = 0x30 // DW_OP_lit0 — literal 0 (marks end-of-list in some contexts)
 )
 
-// formatLocation formats a DWARF location description
 func formatLocation(loc []byte) string {
 	if len(loc) == 0 {
 		return ""
